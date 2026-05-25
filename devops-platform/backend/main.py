@@ -6,9 +6,14 @@ import httpx
 import base64
 import json
 import re
+import os
+from dotenv import load_dotenv
 from repo_scanner import RepoScanner
 from cicd_generator import CICDGenerator
 from ai_generator import AIGenerator
+
+# Load environment variables from .env file
+load_dotenv()
 
 app = FastAPI(title="DevOps Platform API", version="1.0.0")
 
@@ -44,18 +49,20 @@ async def health():
 
 @app.post("/api/scan/repo")
 async def scan_repo(request: RepoScanRequest):
-    scanner = RepoScanner(request.github_token)
+    # Use provided token or fallback to environment variable
+    github_token = request.github_token or os.getenv("GITHUB_TOKEN")
+    scanner = RepoScanner(github_token=github_token)
     try:
         result = await scanner.scan(request.repo_url)
         
-        # Add structure analysis if AI config is available
+        # AI Config with environmental fallbacks
         ai_config = request.ai_config or {}
-        if ai_config.get("api_key"):
+        if ai_config.get("api_key") or os.getenv("AI_API_KEY"):
             try:
                 generator = AIGenerator(
-                    api_key=ai_config.get("api_key"),
-                    model=ai_config.get("model", "gpt-3.5-turbo"),
-                    base_url=ai_config.get("base_url")
+                    api_key=ai_config.get("api_key") or os.getenv("AI_API_KEY"),
+                    model=ai_config.get("model") or os.getenv("AI_MODEL", "gpt-3.5-turbo"),
+                    base_url=ai_config.get("base_url") or os.getenv("AI_BASE_URL")
                 )
                 descriptions = await generator.analyze_structure(result["file_tree_sample"])
                 result["structure_descriptions"] = descriptions
@@ -75,11 +82,19 @@ async def scan_repo(request: RepoScanRequest):
 async def generate_cicd(request: CICDGenerateRequest):
     try:
         if request.use_ai:
+            # AI Config with environmental fallbacks
             ai_config = request.ai_config or {}
+            api_key = ai_config.get("api_key") or os.getenv("AI_API_KEY")
+            model = ai_config.get("model") or os.getenv("AI_MODEL", "gpt-3.5-turbo")
+            base_url = ai_config.get("base_url") or os.getenv("AI_BASE_URL")
+            
+            if not api_key:
+                raise ValueError("API key is required for AI generation (provide it in request or set AI_API_KEY environment variable).")
+                
             generator = AIGenerator(
-                api_key=ai_config.get("api_key"),
-                model=ai_config.get("model", "gpt-3.5-turbo"),
-                base_url=ai_config.get("base_url")
+                api_key=api_key,
+                model=model,
+                base_url=base_url
             )
             result = await generator.generate(
                 repo_info=request.repo_info,
@@ -113,11 +128,17 @@ class PipeLineChatRequest(BaseModel):
 @app.post("/api/chat/pipeline")
 async def chat_pipeline(request: PipeLineChatRequest):
     try:
+        # AI Config with environmental fallbacks
         ai_config = request.ai_config or {}
+        api_key = ai_config.get("api_key") or os.getenv("AI_API_KEY")
+        
+        if not api_key:
+            raise ValueError("AI API key is required for chat (provide it in request or set AI_API_KEY environment variable).")
+            
         generator = AIGenerator(
-            api_key=ai_config.get("api_key"),
-            model=ai_config.get("model", "gpt-3.5-turbo"),
-            base_url=ai_config.get("base_url")
+            api_key=api_key,
+            model=ai_config.get("model") or os.getenv("AI_MODEL", "gpt-3.5-turbo"),
+            base_url=ai_config.get("base_url") or os.getenv("AI_BASE_URL")
         )
         response = await generator.chat(
             pipeline_code=request.pipeline_code,
