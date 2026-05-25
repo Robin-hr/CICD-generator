@@ -346,8 +346,7 @@
 
 .lang-name {
   color: var(--text-secondary);
-  width: 80px;
-  truncate: ellipsis;
+  text-overflow: ellipsis;
   overflow: hidden;
   white-space: nowrap;
   font-size: 11px;
@@ -510,9 +509,124 @@
   max-width: 320px;
 }
 
+/* ─── Mode Toggle ─────────────────────────────────── */
+.mode-toggle {
+  display: flex;
+  background: var(--bg-elevated);
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid var(--border-soft);
+}
+
+.mode-btn {
+  background: none;
+  border: none;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.mode-btn.active {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
+/* ─── Manual Input ─────────────────────────────────── */
+.manual-input-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.manual-hint {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.manual-textarea {
+  width: 100%;
+  min-height: 200px;
+  background: rgba(0,0,0,0.2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  resize: vertical;
+}
+
+.cta-btn--manual {
+  align-self: flex-start;
+  margin-top: 8px;
+}
+
+/* ─── Structure Tree Section ─────────────────────── */
+.structure-tree-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  margin: 10px 0;
+}
+
+.structure-tree-section .section-header {
+  padding: 12px 20px;
+  background: rgba(255,255,255,0.02);
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.structure-tree-container {
+  padding: 20px;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.tree-empty {
+  padding: 40px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* ─── AI Toggle ─────────────────────────────────── */
+.ai-toggle-row {
+  margin: 8px 0;
+  padding: 0 4px;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.checkbox-label input {
+  cursor: pointer;
+}
+
+.zap-icon {
+  color: var(--accent-orange);
+}
+
 @media (max-width: 600px) {
   .scan-card__input-row { flex-direction: column; }
   .scan-btn { width: 100%; justify-content: center; }
   .result-repo-header { flex-direction: column; }
   .detection-grid { grid-template-columns: 1fr; }
+  .cta-section { flex-direction: column; align-items: stretch; }
 }

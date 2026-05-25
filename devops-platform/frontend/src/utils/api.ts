@@ -21,6 +21,15 @@ export interface RepoScanResult {
     topics: string[];
   };
   file_tree_sample: string[];
+  file_tree_hierarchical: RepoNode[];
+  structure_descriptions: Record<string, string>;
+}
+
+export interface RepoNode {
+  name: string;
+  type: 'blob' | 'tree' | 'dir';
+  path: string;
+  children?: RepoNode[];
 }
 
 export interface CICDResult {

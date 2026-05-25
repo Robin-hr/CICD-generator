@@ -4,8 +4,10 @@ import {
   CheckCircle, XCircle, AlertCircle, ChevronRight,
   Lock, Globe, FlaskConical, Package, Layers, Server
 } from 'lucide-react';
-import { scanRepo, type RepoScanResult } from '../utils/api';
+import { scanRepo, type RepoScanResult, type RepoNode } from '../utils/api';
+import RepoStructureTree from './RepoStructureTree';
 import './RepoScanner.css';
+import './RepoStructureTree.css';
 
 interface Props {
   onRepoScanned: (result: RepoScanResult) => void;
@@ -33,12 +35,20 @@ export default function RepoScanner({ onRepoScanned, onGoToCICD, scannedRepo }: 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState<RepoScanResult | null>(scannedRepo);
+  const [useAIAnalysis, setUseAIAnalysis] = useState(true);
+  const [manualMode, setManualMode] = useState(false);
+  const [manualInput, setManualInput] = useState('');
 
   const handleScan = async () => {
     if (!url.trim()) return;
     setLoading(true);
     setError('');
     try {
+      const aiConfig = useAIAnalysis ? {
+        api_key: 'placeholder', // Frontend should ideally have a place to enter this
+        model: 'gpt-3.5-turbo'
+      } : undefined;
+      
       const data = await scanRepo(url.trim(), token.trim() || undefined);
       setResult(data);
       onRepoScanned(data);
@@ -47,6 +57,36 @@ export default function RepoScanner({ onRepoScanned, onGoToCICD, scannedRepo }: 
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleManualSubmit = () => {
+    // Basic heuristics to construct a RepoScanResult from manual input
+    const mockResult: RepoScanResult = {
+      owner: 'manual',
+      repo: 'project',
+      repo_url: '',
+      description: 'Manually provided structure',
+      default_branch: 'main',
+      stars: 0,
+      language: { primary: 'Mixed', all: {} },
+      framework: 'Detected from structure',
+      package_manager: 'Detected',
+      deployment_styles: [],
+      test_framework: 'Unknown',
+      metadata: {
+        total_files: 0,
+        has_dockerfile: manualInput.includes('Dockerfile'),
+        has_ci: false,
+        has_tests: manualInput.includes('test'),
+        private: true,
+        topics: []
+      },
+      file_tree_sample: manualInput.split('\n').map(l => l.trim()),
+      file_tree_hierarchical: [], // We'd need a parser here
+      structure_descriptions: {}
+    };
+    setResult(mockResult);
+    onRepoScanned(mockResult);
   };
 
   const StatusIcon = ({ ok }: { ok: boolean }) =>
@@ -68,73 +108,114 @@ export default function RepoScanner({ onRepoScanned, onGoToCICD, scannedRepo }: 
           <h1 className="page-title">Repository Scanner</h1>
           <p className="page-subtitle">Detect language, framework, package manager & deployment style</p>
         </div>
+        <div className="mode-toggle">
+          <button 
+            className={`mode-btn ${!manualMode ? 'active' : ''}`} 
+            onClick={() => setManualMode(false)}
+          >
+            Auto Scan
+          </button>
+          <button 
+            className={`mode-btn ${manualMode ? 'active' : ''}`} 
+            onClick={() => setManualMode(true)}
+          >
+            Manual Structure
+          </button>
+        </div>
       </div>
 
       {/* Input Card */}
       <div className="scan-card">
-        <div className="scan-card__input-row">
-          <div className="input-wrapper">
-            <GitBranch size={14} className="input-icon" />
-            <input
-              className="repo-input"
-              type="text"
-              placeholder="https://github.com/owner/repository"
-              value={url}
-              onChange={e => setUrl(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleScan()}
-              spellCheck={false}
-            />
-          </div>
-          <button
-            className={`scan-btn ${loading ? 'scan-btn--loading' : ''}`}
-            onClick={handleScan}
-            disabled={loading || !url.trim()}
-          >
-            {loading ? (
-              <>
-                <span className="spinner" />
-                Scanning...
-              </>
-            ) : (
-              <>
-                <Search size={14} />
-                Scan Repo
-              </>
-            )}
-          </button>
-        </div>
+        {!manualMode ? (
+          <>
+            <div className="scan-card__input-row">
+              <div className="input-wrapper">
+                <GitBranch size={14} className="input-icon" />
+                <input
+                  className="repo-input"
+                  type="text"
+                  placeholder="https://github.com/owner/repository"
+                  value={url}
+                  onChange={e => setUrl(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleScan()}
+                  spellCheck={false}
+                />
+              </div>
+              <button
+                className={`scan-btn ${loading ? 'scan-btn--loading' : ''}`}
+                onClick={handleScan}
+                disabled={loading || !url.trim()}
+              >
+                {loading ? (
+                  <>
+                    <span className="spinner" />
+                    Scanning...
+                  </>
+                ) : (
+                  <>
+                    <Search size={14} />
+                    Scan Repo
+                  </>
+                )}
+              </button>
+            </div>
 
-        {/* Token toggle */}
-        <div className="token-row">
-          <button className="token-toggle" onClick={() => setShowToken(!showToken)}>
-            <Lock size={11} />
-            {showToken ? 'Hide' : 'Add'} GitHub Token (optional, avoids rate limits)
-          </button>
-        </div>
-        {showToken && (
-          <div className="token-input-row">
-            <input
-              className="token-input"
-              type="password"
-              placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
-              value={token}
-              onChange={e => setToken(e.target.value)}
+            {/* Token toggle */}
+            <div className="token-row">
+              <button className="token-toggle" onClick={() => setShowToken(!showToken)}>
+                <Lock size={11} />
+                {showToken ? 'Hide' : 'Add'} GitHub Token (optional, avoids rate limits)
+              </button>
+            </div>
+            {showToken && (
+              <div className="token-input-row">
+                <input
+                  className="token-input"
+                  type="password"
+                  placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+                  value={token}
+                  onChange={e => setToken(e.target.value)}
+                />
+              </div>
+            )}
+
+            {/* AI Toggle */}
+            <div className="ai-toggle-row">
+               <label className="checkbox-label">
+                  <input type="checkbox" checked={useAIAnalysis} onChange={e => setUseAIAnalysis(e.target.checked)} />
+                  <span>Use AI Structure Analysis (Premium)</span>
+                  <Zap size={10} className="zap-icon" />
+               </label>
+            </div>
+
+            {/* Examples */}
+            <div className="examples-row">
+              <span className="examples-label">Try:</span>
+              {EXAMPLE_REPOS.map(repo => {
+                const short = repo.replace('https://github.com/', '');
+                return (
+                  <button key={repo} className="example-chip" onClick={() => setUrl(repo)}>
+                    {short}
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        ) : (
+          <div className="manual-input-section">
+            <p className="manual-hint">Paste your repository folder structure or describe your project setup below.</p>
+            <textarea
+              className="manual-textarea"
+              placeholder="Example:&#10;backend/&#10;  main.py (FastAPI)&#10;  requirements.txt&#10;frontend/&#10;  src/App.tsx (React)&#10;  package.json"
+              value={manualInput}
+              onChange={e => setManualInput(e.target.value)}
             />
+            <button className="cta-btn cta-btn--manual" onClick={handleManualSubmit} disabled={!manualInput.trim()}>
+              Process Structure
+              <ChevronRight size={16} />
+            </button>
           </div>
         )}
-
-        {/* Examples */}
-        <div className="examples-row">
-          <span className="examples-label">Try:</span>
-          {EXAMPLE_REPOS.map(repo => {
-            const short = repo.replace('https://github.com/', '');
-            return (
-              <button key={repo} className="example-chip" onClick={() => setUrl(repo)}>
-                {short}
-              </button>
-            );
-          })}
-        </div>
       </div>
 
       {/* Error */}
@@ -260,19 +341,23 @@ export default function RepoScanner({ onRepoScanned, onGoToCICD, scannedRepo }: 
             </div>
           </div>
 
-          {/* CI/CD Status */}
-          <div className="ci-status-row">
-            <div className="ci-status-item">
-              <StatusIcon ok={result.metadata.has_ci} />
-              <span>{result.metadata.has_ci ? 'CI/CD configured' : 'No CI/CD found'}</span>
+          {/* New Visual Structure Tree */}
+          <div className="structure-tree-section">
+            <div className="section-header">
+              <Layers size={14} />
+              Repository Structure
             </div>
-            <div className="ci-status-item">
-              <StatusIcon ok={result.metadata.has_dockerfile} />
-              <span>{result.metadata.has_dockerfile ? 'Dockerfile present' : 'No Dockerfile'}</span>
-            </div>
-            <div className="ci-status-item">
-              <StatusIcon ok={result.metadata.has_tests} />
-              <span>{result.metadata.has_tests ? 'Tests present' : 'No tests'}</span>
+            <div className="structure-tree-container">
+              {result.file_tree_hierarchical && result.file_tree_hierarchical.length > 0 ? (
+                <RepoStructureTree 
+                  data={result.file_tree_hierarchical} 
+                  descriptions={result.structure_descriptions} 
+                />
+              ) : (
+                <div className="tree-empty">
+                  No structure data available for this view.
+                </div>
+              )}
             </div>
           </div>
 

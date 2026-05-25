@@ -243,6 +243,7 @@ export default function CICDGenerator({ scannedRepo }: Props) {
                 <option value="Docker/Container">Docker / Container</option>
                 <option value="Serverless">Serverless</option>
                 <option value="Kubernetes">Kubernetes</option>
+                <option value="S3 Static Hosting">S3 Static Hosting</option>
                 <option value="On-Premise">On-Premise</option>
               </select>
             </div>

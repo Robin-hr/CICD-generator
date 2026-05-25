@@ -23,6 +23,7 @@ app.add_middleware(
 class RepoScanRequest(BaseModel):
     repo_url: str
     github_token: Optional[str] = None
+    ai_config: Optional[dict] = {}
 
 class CICDGenerateRequest(BaseModel):
     repo_info: dict
@@ -46,6 +47,24 @@ async def scan_repo(request: RepoScanRequest):
     scanner = RepoScanner(request.github_token)
     try:
         result = await scanner.scan(request.repo_url)
+        
+        # Add structure analysis if AI config is available
+        ai_config = request.ai_config or {}
+        if ai_config.get("api_key"):
+            try:
+                generator = AIGenerator(
+                    api_key=ai_config.get("api_key"),
+                    model=ai_config.get("model", "gpt-3.5-turbo"),
+                    base_url=ai_config.get("base_url")
+                )
+                descriptions = await generator.analyze_structure(result["file_tree_sample"])
+                result["structure_descriptions"] = descriptions
+            except Exception as e:
+                print(f"Structure analysis failed: {e}")
+                result["structure_descriptions"] = {}
+        else:
+            result["structure_descriptions"] = {}
+        
         return {"success": True, "data": result}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -67,7 +86,9 @@ async def generate_cicd(request: CICDGenerateRequest):
                 platform=request.platform,
                 file_contents=request.repo_info.get("file_contents", {}),
                 target_cloud=request.target_cloud,
-                deployment_strategy=request.deployment_strategy
+                deployment_strategy=request.deployment_strategy,
+                hierarchical_tree=request.repo_info.get("file_tree_hierarchical"),
+                structure_descriptions=request.repo_info.get("structure_descriptions")
             )
         else:
             generator = CICDGenerator()

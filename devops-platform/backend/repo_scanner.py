@@ -109,6 +109,62 @@ class RepoScanner:
             tree_data = tree_resp.json()
             return tree_data.get("tree", []), repo_data
 
+    def _detect_logic_clues(self, files: list) -> list:
+        clues = []
+        # Entry points
+        for f in files:
+            name = f.split('/')[-1]
+            if name in ['main.py', 'app.py', 'run.py', 'index.js', 'index.ts', 'server.js', 'App.tsx']:
+                clues.append(f"Potential entry point: {f}")
+            if name == 'manage.py':
+                clues.append("Django management script detected")
+            if 'wsgi.py' in f:
+                clues.append(f"WSGI entry point: {f}")
+            if 'asgi.py' in f:
+                clues.append(f"ASGI entry point: {f}")
+        
+        # Monorepo hints
+        if any('/package.json' in f for f in files) and any(f.startswith('backend/') or f.startswith('frontend/') for f in files):
+            clues.append("Monorepo structure detected (frontend/backend split)")
+            
+        return clues
+
+    def build_hierarchy(self, tree: list) -> dict:
+        """Converts a flat list of paths into a nested dictionary."""
+        root = {"name": "root", "type": "dir", "children": {}}
+        for leaf in tree:
+            parts = leaf["path"].split("/")
+            current = root
+            for i, part in enumerate(parts):
+                if i == len(parts) - 1:
+                    # It's a file or the leaf folder
+                    current["children"][part] = {
+                        "name": part,
+                        "type": leaf.get("type", "blob"),
+                        "path": leaf["path"],
+                        "children": {} if leaf.get("type") == "tree" else None
+                    }
+                else:
+                    # It's a directory
+                    if part not in current["children"]:
+                        current["children"][part] = {
+                            "name": part,
+                            "type": "tree",
+                            "path": "/".join(parts[:i+1]),
+                            "children": {}
+                        }
+                    current = current["children"][part]
+        
+        def dict_to_list(d):
+            if d.get("children") is None: return d
+            d["children"] = sorted(
+                [dict_to_list(v) for v in d["children"].values()],
+                key=lambda x: (x["type"] != "tree", x["name"])
+            )
+            return d
+
+        return dict_to_list(root)["children"]
+
     async def fetch_file(self, owner: str, repo: str, path: str) -> Optional[str]:
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.get(
@@ -235,7 +291,7 @@ class RepoScanner:
         has_tests = any("test" in p.lower() or "spec" in p.lower() for p in file_paths)
 
         # Deep Logic Detection
-        logic_clues = []
+        logic_clues = self._detect_logic_clues(list(file_paths))
         for path, content in file_contents.items():
             content_lower = content.lower()
             if "subprocess.run" in content or "os.system" in content:
@@ -287,5 +343,6 @@ class RepoScanner:
                 "logic_clues": logic_clues
             },
             "file_tree_sample": [f["path"] for f in tree if f.get("type") == "blob"][:100],
+            "file_tree_hierarchical": self.build_hierarchy(tree),
             "file_contents": file_contents,
         }

@@ -1,7 +1,7 @@
 import json
 import httpx
 from typing import Dict, Any, Optional
-from openai import OpenAI
+from openai import OpenAI, AsyncOpenAI
 
 class AIGenerator:
     def __init__(self, api_key: str, model: str, base_url: Optional[str] = None):
@@ -17,10 +17,18 @@ class AIGenerator:
             # Add more defaults as needed
             
         self.client = OpenAI(api_key=api_key, base_url=base_url)
+        self.async_client = AsyncOpenAI(api_key=api_key, base_url=base_url)
         self.model = model
+        self.base_url = base_url
 
-    async def generate(self, repo_info: dict, platform: str, file_contents: Dict[str, str] = {}, target_cloud: str = "AWS", deployment_strategy: str = "Serverless") -> dict:
-        prompt = self._build_prompt(repo_info, platform, file_contents, target_cloud, deployment_strategy)
+    async def generate(self, repo_info: dict, platform: str, file_contents: Dict[str, str] = {}, 
+                       target_cloud: str = "AWS", deployment_strategy: str = "Serverless",
+                       hierarchical_tree: Optional[list] = None, 
+                       structure_descriptions: Optional[dict] = None) -> dict:
+        prompt = self._build_prompt(
+            repo_info, platform, file_contents, target_cloud, 
+            deployment_strategy, hierarchical_tree, structure_descriptions
+        )
         
         try:
             response = self.client.chat.completions.create(
@@ -70,7 +78,10 @@ class AIGenerator:
             "gitlab_ci": ".gitlab-ci.yml",
         }.get(platform, "cicd_config")
 
-    def _build_prompt(self, repo_info: dict, platform: str, file_contents: Dict[str, str], target_cloud: str, deployment_strategy: str) -> str:
+    def _build_prompt(self, repo_info: dict, platform: str, file_contents: Dict[str, str], 
+                     target_cloud: str, deployment_strategy: str,
+                     hierarchical_tree: Optional[list] = None,
+                     structure_descriptions: Optional[dict] = None) -> str:
         metadata = {
             "owner": repo_info.get("owner"),
             "repo": repo_info.get("repo"),
@@ -101,11 +112,25 @@ Deployment Intent (MANDATORY):
 Key Files Content:
 {files_context}
 
+Repository Structure (HIERARCHICAL):
+{json.dumps(hierarchical_tree, indent=2) if hierarchical_tree else "Not provided"}
+
+Structure Descriptions:
+{json.dumps(structure_descriptions, indent=2) if structure_descriptions else "Not provided"}
+
 Core Directives for "Directly Runnable" Perfection:
 1. **Zero-Edit Policy**: The generated code must be syntactically perfect and logically sound for {platform}.
-2. **STRICT Logic Clue Adherence**: You MUST use the `logic_clues` metadata as the absolute source of truth for entry points and port bindings.
-3. **Sequence**: If `dynamic_terraform` clues are found, you MUST install and setup Terraform BEFORE starting any app code.
-4. **Terraform Flow**: `terraform init`, `terraform plan -out=tfplan`, and EXACTLY `terraform apply -auto-approve -input=false tfplan`.
+2. **Contextual Intelligence**: Use the hierarchical tree and descriptions to determine the EXACT entry point (e.g., `uvicorn backend.main:app` if `main.py` is in `backend/`).
+3. **S3 Static Hosting (If Strategy is S3)**:
+    - Use `aws s3 sync` to upload the build folder (e.g., `dist`, `build`, `out`) to the S3 bucket.
+    - MUST include a CloudFront invalidation step if the target cloud is AWS.
+    - Set `bucket_name` and `cloudfront_id` as env/secrets placeholders.
+4. **EC2 Deployment Reliability (If Strategy is EC2)**:
+    - **Safe Paths**: Use `/home/${{{{ secrets.SSH_USERNAME }}}}/app` instead of `/app`.
+    - **System Packages**: Ensure `unzip`, `python3-pip`, and `curl` are installed via `sudo yum/apt install`.
+    - **Health Checks**: Append a health check step using `curl -f http://...` with retries.
+5. **Node.js Safety**: Check for `package-lock.json`, `yarn.lock`, or `pnpm-lock.yaml` before choosing the install command. Fallback to `npm install` if no lock file is found.
+6. **Sequence**: If `dynamic_terraform` clues are found, you MUST install and setup Terraform BEFORE starting any app code.
 """
 
         # Platform Specific Directives
@@ -114,34 +139,9 @@ Core Directives for "Directly Runnable" Perfection:
 5. **Absolute Zero-Defect Enterprise Execution (GitHub Actions)**:
     - **OIDC**: You MUST use `permissions: {{ id-token: write, contents: read }}` and `aws-actions/configure-aws-credentials@v4` for AWS.
     - **Caching**: Use dependency caching (e.g., `actions/setup-python@v5` with `cache: 'pip'`).
-    - **EC2 Deployment**: If EC2/VM, you MUST output this exact YAML block:
-      ```yaml
-      - name: Create Artifact
-        run: zip -r app.zip . -x "*.git*" "*venv*"
-      - name: SCP files to EC2
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{{{ secrets.SSH_HOST }}}}
-          username: ${{{{ secrets.SSH_USERNAME }}}}
-          key: ${{{{ secrets.SSH_PRIVATE_KEY }}}}
-          source: "app.zip"
-          target: "/app"
-      - name: SSH deploy
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{{{ secrets.SSH_HOST }}}}
-          username: ${{{{ secrets.SSH_USERNAME }}}}
-          key: ${{{{ secrets.SSH_PRIVATE_KEY }}}}
-          script: |
-            sudo yum install -y unzip
-            cd /app
-            unzip -o app.zip
-            python3 -m venv venv
-            source venv/bin/activate
-            pip install -r requirements.txt
-            pip install uvicorn
-            sudo systemctl restart fastapi || (nohup uvicorn main:app --host 0.0.0.0 --port ${{{{ env.APP_PORT }}}} &)
-      ```
+    - **Deployment Script**: Generate a ROBUST script based on the chosen strategy ({deployment_strategy}). 
+    - **DO NOT** use generic hardcoded paths if the repo structure suggests otherwise.
+    - **Entry point**: If {deployment_strategy} is EC2, identify if it's `main.py`, `app.py`, or a sub-module.
 """
         elif platform == "jenkins":
             prompt += f"""
@@ -194,7 +194,7 @@ You are an expert DevOps engineer and CI/CD assistant.
 A user has generated a {platform} pipeline using this tool and needs help or clarification.
 
 ### Context
-- **Repository Metadata**: {json.dumps({k: v for k, v in repo_info.items() if k != 'file_contents'})}
+- **Repository Metadata**: {json.dumps({k: v for k, v in repo_info.items() if k not in ['file_contents', 'file_tree_hierarchical', 'structure_descriptions']})}
 - **Target Platform**: {platform}
 - **Current Generated Pipeline Code**:
 ```{platform}
@@ -206,24 +206,50 @@ A user has generated a {platform} pipeline using this tool and needs help or cla
 
 ### Instructions
 1. Provide a concise, professional, and helpful response.
-2. If the user is reporting an error, identify the likely cause in the generated code and suggest a fix.
+2. If the user is reporting an error or logic failure, you MUST identify the cause, fix it, and output the ENTIRE corrected pipeline code in a ```{platform} block.
 3. If the user asks for a change, explain how to modify the code or provide the updated snippet.
-4. Keep the explanation clear and technical but accessible.
+4. The goal is to make the pipeline "work perfectly" based on the user's feedback.
 5. Do NOT output any unnecessary preamble. Focus on answering the user's specific query.
 """
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"{self.base_url}/chat/completions",
-                    headers={"Authorization": f"Bearer {self.api_key}"},
-                    json={
-                        "model": self.model,
-                        "messages": [{"role": "user", "content": prompt}]
-                    },
-                    timeout=60.0
-                )
-                response.raise_for_status()
-                data = response.json()
-                return data["choices"][0]["message"]["content"]
+            response = await self.async_client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.2,
+            )
+            return response.choices[0].message.content
         except Exception as e:
             return f"Error communicating with AI: {str(e)}"
+
+    async def analyze_structure(self, file_tree: list) -> Dict[str, str]:
+        """Generates descriptions for key files and directories in the tree."""
+        # We only pass a sample of the tree to keep the prompt small
+        tree_str = "\n".join(file_tree[:100])
+        prompt = f"""
+Analyze the following repository file tree and provide a JSON mapping of path to a short (max 10 words) description of its purpose.
+Focus on:
+1. Root directories
+2. Key configuration files (package.json, requirements.txt, etc.)
+3. Main entry points (app.py, index.tsx, etc.)
+4. Important scripts (Dockerfile, docker-compose.yml, train.py, etc.)
+
+File Tree:
+{tree_str}
+
+Output ONLY a JSON object where keys are the paths and values are the descriptions.
+Example: {{ "src/": "Frontend source code", "backend/main.py": "API entry point" }}
+"""
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": "You are a senior DevOps architect. Analyze repo structures accurately."},
+                    {"role": "user", "content": prompt}
+                ],
+                response_format={ "type": "json_object" },
+                temperature=0.1,
+            )
+            return json.loads(response.choices[0].message.content)
+        except Exception as e:
+            print(f"Structure analysis failed: {e}")
+            return {}
